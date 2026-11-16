@@ -1,9 +1,16 @@
 name: Mojave Build (NW.js DMG)
 
 # Builds the NW.js desktop client pinned to NW.js 0.79.1 (the last version
-# whose binaries run on macOS 10.14 Mojave) and gates the result: the job
+# whose x64 binaries run on macOS 10.14 Mojave) and gates the result: the job
 # fails if any binary inside the bundled app declares a minimum macOS
 # above 10.14.
+#
+# x64 ONLY: NW.js 0.79.1's arm64 macOS binaries declare min macOS 11.0
+# (verified 2026-11-16 by two independent Mach-O parses of the pristine
+# arm64 redistributable — every binary, framework included, is 11.0),
+# while the x64 binaries declare 10.13. The arm64 dmg therefore can never
+# pass this gate, and Mojave never ran on Apple Silicon anyway, so the
+# arm64 dmg is neither gated nor shipped here.
 
 on:
   push:
@@ -42,9 +49,10 @@ jobs:
           python3 -m venv /tmp/gate-venv
           /tmp/gate-venv/bin/pip install --quiet lief
       - name: Mojave Gate (min macOS <= 10.14)
+        # x64 dmg only — see the header note: the arm64 dmg can never pass.
         run: |
           set -e
-          for dmg in app/nw/bundle/*.dmg; do
+          for dmg in app/nw/bundle/*x64*.dmg; do
             echo "=== $dmg"
             mnt=$(mktemp -d)
             hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -readonly
@@ -56,7 +64,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hakuneko-nw-mojave-dmg
-          path: app/nw/bundle/*.dmg
+          path: app/nw/bundle/*x64*.dmg
           retention-days: 30
       - name: Publish Release
         if: github.event_name == 'workflow_dispatch'
@@ -64,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="mojave-$(date -u +%y%m%dT%H%M)"
-          gh release create "$tag" app/nw/bundle/*.dmg \
+          gh release create "$tag" app/nw/bundle/*x64*.dmg \
             --title "HaruNeko for Mojave (NW.js 0.79.1)" \
-            --notes "Snapshot 260903T1833 of HaruNeko/HakuNeko packaged with NW.js 0.79.1 for macOS 10.14 Mojave (Intel & Apple Silicon). The app loads its web UI from this fork's GitHub Pages site, so an internet connection is required." \
+            --notes "Snapshot 260903T1833 of HaruNeko/HakuNeko packaged with NW.js 0.79.1 for macOS 10.14 Mojave (Intel). The app loads its web UI from this fork's GitHub Pages site, so an internet connection is required." \
             --prerelease
