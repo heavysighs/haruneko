@@ -1,0 +1,67 @@
+name: Mojave Build (NW.js DMG)
+
+# Builds the NW.js desktop client pinned to NW.js 0.79.1 (the last version
+# whose binaries run on macOS 10.14 Mojave) and gates the result: the job
+# fails if any binary inside the bundled app declares a minimum macOS
+# above 10.14.
+
+on:
+  push:
+    branches:
+      - mojave-fix
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Verify DMG
+    runs-on: macos-latest
+    steps:
+      - name: Checkout mojave-fix
+        uses: actions/checkout@v4
+        with:
+          ref: mojave-fix
+      - name: Install NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install NPM Packages
+        # engine-strict must be relaxed: the nw@0.79.1 package pins node v20.5.0
+        env:
+          npm_config_engine_strict: 'false'
+        run: npm run npm:clean-install
+      - name: Bundle NW.js Application
+        run: npm run bundle --workspace=app/nw
+      - name: Prepare Mojave Gate
+        run: |
+          python3 -m venv /tmp/gate-venv
+          /tmp/gate-venv/bin/pip install --quiet lief
+      - name: Mojave Gate (min macOS <= 10.14)
+        run: |
+          set -e
+          for dmg in app/nw/bundle/*.dmg; do
+            echo "=== $dmg"
+            mnt=$(mktemp -d)
+            hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -readonly
+            app=$(find "$mnt" -maxdepth 2 -name '*.app' | head -1)
+            /tmp/gate-venv/bin/python .github/scripts/check-mojave.py "$app"
+            hdiutil detach "$mnt"
+          done
+      - name: Upload DMGs
+        uses: actions/upload-artifact@v4
+        with:
+          name: hakuneko-nw-mojave-dmg
+          path: app/nw/bundle/*.dmg
+          retention-days: 30
+      - name: Publish Release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="mojave-$(date -u +%y%m%dT%H%M)"
+          gh release create "$tag" app/nw/bundle/*.dmg \
+            --title "HaruNeko for Mojave (NW.js 0.79.1)" \
+            --notes "Snapshot 260903T1833 of HaruNeko/HakuNeko packaged with NW.js 0.79.1 for macOS 10.14 Mojave (Intel & Apple Silicon). The app loads its web UI from this fork's GitHub Pages site, so an internet connection is required." \
+            --prerelease

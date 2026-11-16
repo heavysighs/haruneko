@@ -17,12 +17,6 @@ export class IPC {
         chrome.runtime.onMessage.addListener(this.OnMessage.bind(this));
     }
 
-    private async GetTabID(): Promise<number> {
-        // TODO: improve query filter e.g., windowID or tabID
-        const tabs = await new Promise<chrome.tabs.Tab[]>(resolve => chrome.tabs.query({ active: true }, resolve));
-        return tabs.at(0)?.id ?? Number.NaN;
-    }
-
     private async OnMessage(message: Payload, _sender: chrome.runtime.MessageSender, sendResponse: (response?: JSONElement) => void): Promise<void> {
         try {
             if (this.messageHandlers.has(message.channel)) {
@@ -44,8 +38,10 @@ export class IPC {
     }
 
     public async Send<TParameters extends JSONArray>(channel: string, ...parameters: TParameters): Promise<void> {
-        const tab = await this.GetTabID();
-        return chrome.tabs.sendMessage<Payload, void>(tab, { channel, parameters });
+        // NOTE: chrome.tabs.sendMessage must not be used here, it fatally crashes the
+        // renderer in NW.js 0.79 (bad IPC message). chrome.runtime.sendMessage reaches
+        // the same runtime.onMessage listeners in both directions.
+        return new Promise<void>(resolve => chrome.runtime.sendMessage<Payload, void>({ channel, parameters }, () => resolve()));
     }
 
     public Handle<TParameters extends JSONArray, TReturn extends JSONElement>(channel: string, callback: RequestCallback<TParameters, TReturn | undefined>): void {
@@ -55,8 +51,7 @@ export class IPC {
     Invoke(channel: Channels.RemoteProcedureCallManager.Stop): Promise<undefined>;
     Invoke(channel: Channels.RemoteProcedureCallManager.Restart, port: number, secret: string): Promise<undefined>;
     public async Invoke<TParameters extends JSONArray, TReturn extends JSONElement>(channel: string, ...parameters: TParameters): Promise<TReturn | undefined> {
-        const tab = await this.GetTabID();
-        return new Promise<TReturn | undefined>(resolve => chrome.tabs.sendMessage<Payload, TReturn>(tab, { channel, parameters }, resolve));
+        return new Promise<TReturn | undefined>(resolve => chrome.runtime.sendMessage<Payload, TReturn>({ channel, parameters }, resolve));
     }
 }
 

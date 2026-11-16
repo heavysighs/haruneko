@@ -1,0 +1,56 @@
+name: Mojave Web (GitHub Pages)
+
+# The Mojave desktop client loads its web application from this fork's own
+# GitHub Pages site (see "url" in app/nw/package.json), because the upstream
+# web build uses JavaScript features that Chromium 116 (NW.js 0.79) lacks.
+# This workflow builds the web app (with the fork's polyfills) and publishes it.
+
+on:
+  push:
+    branches:
+      - mojave-fix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & Deploy Web-Application
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout mojave-fix
+        uses: actions/checkout@v4
+        with:
+          ref: mojave-fix
+      - name: Install NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install NPM Packages
+        # engine-strict must be relaxed: the nw@0.79.1 package pins node v20.5.0
+        env:
+          npm_config_engine_strict: 'false'
+        run: npm run npm:clean-install
+      - name: Build Web-Application
+        run: npm run build --workspace=web -- --base=/haruneko/
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/build
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

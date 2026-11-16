@@ -1,3 +1,4 @@
+import './engine/RuntimePolyfills';
 import { CreateAppWindow } from './engine/platform/AppWindow';
 import { FeatureFlags } from './engine/FeatureFlags';
 import type { HakuNeko } from './engine/HakuNeko';
@@ -6,7 +7,7 @@ import './engine/RegExpSafe';
 
 const appHook = '#app';
 const noticeHook = '#hakuneko-notice';
-const splashPath = '/splash.html';
+const splashPath = `${import.meta.env.BASE_URL}splash.html`;
 
 declare global {
     var HakuNeko: HakuNeko;
@@ -18,8 +19,8 @@ declare global {
 window.addEventListener('load', async () => {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.allSettled(registrations.map(registration => registration.unregister()));
-    const urlServiceWorker = new URL(import.meta.env.DEV ? './service-worker.ts' : '/sw.js', import.meta.url);
-    const registration = await navigator.serviceWorker.register(urlServiceWorker, { scope: '/' });
+    const urlServiceWorker = new URL(import.meta.env.DEV ? './service-worker.ts' : `${import.meta.env.BASE_URL}sw.js`, import.meta.url);
+    const registration = await navigator.serviceWorker.register(urlServiceWorker, { scope: import.meta.env.BASE_URL });
     registration.addEventListener('updatefound', () => {
         const activeServiceWorker = registration.active;
         // Reload application as soon as the active servcie-worker was replaced by the updated service-worker
