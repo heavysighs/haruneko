@@ -17,7 +17,10 @@ permissions:
 jobs:
   build:
     name: Build & Verify DMG
-    runs-on: macos-latest
+    # Intel runner: the arm64 macOS pool had no capacity (a queued run was
+    # cancelled after 15 min without ever getting a machine). The bundle
+    # assembles both x64 and arm64 apps regardless of the host arch.
+    runs-on: macos-15-intel
     steps:
       - name: Checkout mojave-fix
         uses: actions/checkout@v4
