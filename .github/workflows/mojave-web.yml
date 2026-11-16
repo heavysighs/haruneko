@@ -44,9 +44,9 @@ jobs:
       - name: Build Web-Application
         run: npm run build --workspace=web -- --base=/haruneko/
       - name: Setup Pages
+        # Pages must be enabled once in the repo settings (Source: GitHub Actions);
+        # the workflow token of a fork cannot create the Pages site itself.
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
