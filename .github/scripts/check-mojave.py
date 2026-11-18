@@ -67,6 +67,48 @@ def main():
                             f"{'.'.join(map(str, version))} > 10.14"
                         )
     print(f"Mach-O binaries checked: {checked}")
+
+    # Dependency closure: every @loader_path / @rpath load command must
+    # resolve to a file inside the bundle. (The NW.js normal redist ships
+    # without libffmpeg.dylib, which the framework hard-loads — the app
+    # crashed at launch on a real Mojave machine because of exactly this.)
+    for root, _dirs, files in os.walk(app):
+        for name in files:
+            path = os.path.join(root, name)
+            if os.path.islink(path):
+                continue
+            for binary in iter_binaries(path):
+                rpaths = [
+                    cmd.path
+                    for cmd in binary.commands
+                    if cmd.__class__.__name__ == "Rpath"
+                ]
+                for cmd in binary.commands:
+                    dep = getattr(cmd, "name", None)
+                    if not isinstance(dep, str):
+                        continue
+                    target = None
+                    if dep.startswith("@loader_path/"):
+                        target = os.path.normpath(
+                            os.path.join(root, dep[len("@loader_path/"):])
+                        )
+                    elif dep.startswith("@rpath/"):
+                        rel = dep[len("@rpath/"):]
+                        for rp in rpaths:
+                            cand = rp.replace("@loader_path", root).replace(
+                                "@executable_path", root
+                            )
+                            cand = os.path.normpath(os.path.join(cand, rel))
+                            if os.path.exists(cand):
+                                target = cand
+                                break
+                        if target is None:
+                            target = os.path.join(root, rel)
+                    if target is not None and not os.path.exists(target):
+                        failures.append(
+                            f"{os.path.relpath(path, app)} loads missing {dep}"
+                        )
+
     if failures:
         print("MOJAVE GATE FAILED:")
         for failure in failures:

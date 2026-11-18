@@ -44,6 +44,28 @@ jobs:
         run: npm run npm:clean-install
       - name: Bundle NW.js Application
         run: npm run bundle --workspace=app/nw
+      - name: Inject libffmpeg.dylib (missing from the normal redist)
+        # The NW.js 0.79.1 NORMAL osx redist ships without libffmpeg.dylib,
+        # but the framework binary hard-loads @loader_path/libffmpeg.dylib —
+        # without it the app aborts at launch (proven on a real Mojave iMac,
+        # 2026-11-18). The SDK redist carries the file (min macOS 10.13);
+        # copy it into the bundled app inside the dmg.
+        run: |
+          set -e
+          curl -fsSL -o /tmp/nw-sdk.zip https://dl.nwjs.io/v0.79.1/nwjs-sdk-v0.79.1-osx-x64.zip
+          unzip -p /tmp/nw-sdk.zip 'nwjs-sdk-v0.79.1-osx-x64/nwjs.app/Contents/Frameworks/nwjs Framework.framework/Versions/116.0.5845.96/libffmpeg.dylib' > /tmp/libffmpeg.dylib
+          for dmg in app/nw/bundle/*x64*.dmg; do
+            rw="${dmg%.dmg}-rw.dmg"
+            hdiutil convert "$dmg" -format UDRW -o "$rw"
+            mnt=$(mktemp -d)
+            hdiutil attach "$rw" -mountpoint "$mnt" -nobrowse
+            app=$(find "$mnt" -maxdepth 2 -name '*.app' | head -1)
+            cp /tmp/libffmpeg.dylib "$app/Contents/Frameworks/nwjs Framework.framework/Versions/116.0.5845.96/libffmpeg.dylib"
+            hdiutil detach "$mnt"
+            hdiutil convert "$rw" -format UDZO -imagekey zlib-level=9 -o "$dmg.tmp"
+            mv "$dmg.tmp" "$dmg"
+            rm -f "$rw"
+          done
       - name: Prepare Mojave Gate
         run: |
           python3 -m venv /tmp/gate-venv
